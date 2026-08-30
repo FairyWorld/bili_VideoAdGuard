@@ -12,32 +12,19 @@ import {
 type OpenAICompatibleRequest = {
   model: string;
   messages: Array<{ role: 'system' | 'user'; content: string }>;
-  max_tokens: number;
-  temperature?: number;
 };
 
 export function buildOpenAICompatibleRequest(
   payload: LLMInvokePayload,
   model: string
 ): OpenAICompatibleRequest {
-  const request: OpenAICompatibleRequest = {
+  return {
     model,
     messages: [
       { role: 'system', content: payload.systemPrompt },
       { role: 'user', content: payload.userPrompt },
     ],
-    max_tokens: payload.maxTokens,
   };
-
-  if (!usesLockedKimiTemperature(model)) {
-    request.temperature = payload.temperature;
-  }
-
-  return request;
-}
-
-function usesLockedKimiTemperature(model: string): boolean {
-  return model.trim().toLowerCase().includes('kimi');
 }
 
 export class LLMGateway {
@@ -112,7 +99,6 @@ export class LLMGateway {
     const message = await client.messages.create({
       model: settings.model,
       max_tokens: payload.maxTokens,
-      temperature: payload.temperature,
       system: payload.systemPrompt,
       messages: [
         {
@@ -170,7 +156,6 @@ export class LLMGateway {
                 { role: 'system', content: payload.systemPrompt },
                 { role: 'user', content: payload.userPrompt },
               ],
-              temperature: payload.temperature,
               stream: false,
             }
       ),

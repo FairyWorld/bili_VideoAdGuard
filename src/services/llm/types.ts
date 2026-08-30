@@ -7,7 +7,6 @@ export interface LLMInvokePayload {
   userPrompt: string;
   responseFormat: LLMResponseFormat;
   maxTokens: number;
-  temperature: number;
 }
 
 export interface LLMInvokeResult {
