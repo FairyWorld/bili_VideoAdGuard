@@ -12,7 +12,8 @@ import {
 type OpenAICompatibleRequest = {
   model: string;
   messages: Array<{ role: 'system' | 'user'; content: string }>;
-  max_tokens: number;
+  max_tokens?: number;
+  max_completion_tokens?: number;
   temperature?: number;
 };
 
@@ -26,14 +27,23 @@ export function buildOpenAICompatibleRequest(
       { role: 'system', content: payload.systemPrompt },
       { role: 'user', content: payload.userPrompt },
     ],
-    max_tokens: payload.maxTokens,
   };
 
-  if (!usesLockedKimiTemperature(model)) {
-    request.temperature = payload.temperature;
+  if (usesGPT5Parameters(model)) {
+    request.max_completion_tokens = payload.maxTokens;
+  } else {
+    request.max_tokens = payload.maxTokens;
+
+    if (!usesLockedKimiTemperature(model)) {
+      request.temperature = payload.temperature;
+    }
   }
 
   return request;
+}
+
+function usesGPT5Parameters(model: string): boolean {
+  return /^gpt-5/i.test(model.trim());
 }
 
 function usesLockedKimiTemperature(model: string): boolean {
