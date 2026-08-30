@@ -55,14 +55,40 @@ jobs:
           echo "New version: $new_version"
           echo "new_version=$new_version" >> $GITHUB_OUTPUT
 
-      - name: Update version in package.json
+      - name: Synchronize versioned files
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ steps.version.outputs.new_version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+          node <<'NODE'
+          const fs = require('fs');
+
+          const version = process.env.RELEASE_VERSION;
+          const manifestPaths = [
+            'manifests/manifest-chrome.json',
+            'manifests/manifest-firefox.json',
+          ];
+
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          packageJson.version = version;
+          fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
+
+          for (const manifestPath of manifestPaths) {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            manifest.version = version;
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+          }
+
+          const cloudCachePath = 'src/services/cloud-cache.ts';
+          const cloudCache = fs.readFileSync(cloudCachePath, 'utf8');
+          const versionPattern = /const CLIENT_VERSION = '[^']+';/;
+          if (!versionPattern.test(cloudCache)) {
+            throw new Error(`Unable to find CLIENT_VERSION in ${cloudCachePath}`);
+          }
+          fs.writeFileSync(
+            cloudCachePath,
+            cloudCache.replace(versionPattern, `const CLIENT_VERSION = '${version}';`)
+          );
+          NODE
 
       - name: Generate changelog
         run: |
@@ -98,7 +124,7 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add package.json
+          git add package.json manifests/manifest-chrome.json manifests/manifest-firefox.json src/services/cloud-cache.ts
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
           git push
 
