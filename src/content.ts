@@ -219,8 +219,17 @@ class AdDetector {
       if (videoElement) {
         this.createAdMarkers(videoElement);
 
+        // 云端缓存的 isDetectionConfident 可能因上传时 videoElement.duration 为 NaN 而错误地为 false，
+        // 因此对于云端结果，基于当前 video 元素重新计算置信度
+        let isConfident = result.isDetectionConfident;
+        if (source === 'remote') {
+          const videoDuration = videoElement.duration;
+          const totalAdDuration = result.adTimeRanges.reduce((sum, [start, end]) => sum + (end - start), 0);
+          isConfident = result.adTimeRanges.length > 0 && !isNaN(videoDuration) && videoDuration > 0 && totalAdDuration < (videoDuration * 0.5);
+        }
+
         const { autoSkipAd } = await chrome.storage.local.get({ autoSkipAd: false });
-        if (autoSkipAd && result.isDetectionConfident) {
+        if (autoSkipAd && isConfident) {
           console.log(`【VideoAdGuard】设置自动跳过监听器${sourceLabel ? `（${sourceLabel}结果）` : ''}`);
           this.setupAutoSkip(videoElement);
         }
