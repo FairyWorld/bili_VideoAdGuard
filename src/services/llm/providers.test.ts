@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { buildOpenAICompatibleRequest } from './providers';
+import { describe, expect, it, vi } from 'vitest';
+
+const anthropicCreate = vi.hoisted(() => vi.fn());
+
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: class Anthropic {
+    messages = { create: anthropicCreate };
+  },
+}));
+
+import { buildOpenAICompatibleRequest, LLMGateway } from './providers';
 import type { LLMInvokePayload } from './types';
 
 const payload: LLMInvokePayload = {
@@ -7,38 +16,66 @@ const payload: LLMInvokePayload = {
   userPrompt: 'user prompt',
   responseFormat: 'text',
   maxTokens: 512,
-  temperature: 0.7,
 };
 
 describe('buildOpenAICompatibleRequest', () => {
-  it('uses GPT-5-compatible parameters for GPT-5 models', () => {
-    const request = buildOpenAICompatibleRequest(payload, ' gpt-5.6-luna ');
-
-    expect(request).toMatchObject({
-      model: ' gpt-5.6-luna ',
-      max_completion_tokens: 512,
+  it.each(['gpt-5.6-luna', 'gpt-4.1', 'kimi-k2'])('omits optional parameters for %s', (model) => {
+    expect(buildOpenAICompatibleRequest(payload, model)).toEqual({
+      model,
+      messages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'user prompt' },
+      ],
     });
-    expect(request).not.toHaveProperty('max_tokens');
-    expect(request).not.toHaveProperty('temperature');
   });
 
-  it('keeps legacy parameters for non-GPT-5 models', () => {
-    const request = buildOpenAICompatibleRequest(payload, 'gpt-4.1');
-
-    expect(request).toMatchObject({
-      model: 'gpt-4.1',
-      max_tokens: 512,
-      temperature: 0.7,
+  it('omits temperature from Anthropic Messages requests', async () => {
+    anthropicCreate.mockResolvedValue({
+      id: 'message-1',
+      content: [{ type: 'text', text: 'response' }],
     });
-    expect(request).not.toHaveProperty('max_completion_tokens');
+
+    await LLMGateway.invoke(payload, {
+      provider: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      apiKey: 'test-key',
+      model: 'claude-opus-4-6',
+    });
+
+    expect(anthropicCreate).toHaveBeenCalledWith({
+      model: 'claude-opus-4-6',
+      max_tokens: 512,
+      system: 'system prompt',
+      messages: [{ role: 'user', content: 'user prompt' }],
+    });
   });
 
-  it('omits temperature for Kimi models', () => {
-    const request = buildOpenAICompatibleRequest(payload, 'kimi-k2');
-
-    expect(request).toMatchObject({
-      max_tokens: 512,
+  it('omits temperature from native custom fetch requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ message: { content: 'response' } }),
     });
-    expect(request).not.toHaveProperty('temperature');
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await LLMGateway.invoke(payload, {
+        provider: 'custom_fetch',
+        baseUrl: 'http://localhost:11434',
+        apiKey: '',
+        model: 'local-model',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({
+      model: 'local-model',
+      messages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'user prompt' },
+      ],
+      stream: false,
+    });
   });
 });

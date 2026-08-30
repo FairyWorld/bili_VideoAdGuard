@@ -30,7 +30,6 @@ export class AIService {
       userPrompt,
       responseFormat,
       maxTokens,
-      temperature: 0,
     };
 
     const response = (await chrome.runtime.sendMessage({

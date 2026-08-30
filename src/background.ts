@@ -207,7 +207,6 @@ class LLMInvokeHandler {
           userPrompt: payload.userPrompt,
           responseFormat: payload.responseFormat === 'text' ? 'text' : 'json',
           maxTokens: typeof payload.maxTokens === 'number' ? payload.maxTokens : 1024,
-          temperature: typeof payload.temperature === 'number' ? payload.temperature : 0,
         },
         storedSettings
       );
